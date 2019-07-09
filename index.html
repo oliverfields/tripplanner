@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Trip planner</title>
+
+        <link rel="stylesheet" href="css/L.Control.MapCenterCoord.min.css" />
+        <link rel="stylesheet" href="css/leaflet.css" />
+        <link rel="stylesheet" href="css/leaflet.measure.css" />
+        <link rel="stylesheet" href="css/jquery-ui.min.css"/>
+        <link href='css/leaflet.fullscreen.css' rel='stylesheet' />
+        <link href="css/all.min.css" rel="stylesheet">
+        <link href="css/leaflet.awesome-markers.css" rel="stylesheet">
+
+		<style>
+*, body {
+margin: 0;
+padding: 0;
+font-family: sans-serif;
+}
+form {
+display: inline;
+margin-left: 1em;
+padding: 10px;
+}
+label {
+margin-right: .4em;
+}
+.control_button {
+margin: 16px;
+display: inline-block;
+cursor: pointer;
+}
+#google_sheet_key {
+width: 420px;
+}
+#controls {
+background-color: #333;
+color: #fff;
+}
+#sheet {
+width: 60%;
+border: none;
+height: 100%;
+position: absolute;
+}
+#map {
+height: 100%;
+width:40%;
+position: absolute;
+margin-left: 60%;
+}
+.leaflet-popup-content h1{
+    font-size: 1em;
+}
+		</style>
+	</head>
+	<body>
+	    <script src="js/jquery_3.3.1.min.js"></script>
+	    <script src="js/leaflet-src.js"></script>
+        <script src="js/leaflet.measure.js"></script>
+	    <script src="js/L.Control.MapCenterCoord.min.js"></script>
+        <script src='js/Leaflet.fullscreen.min.js'></script>
+        <script src='js/leaflet.awesome-markers.min.js'></script>
+        
+	    <div id="controls">
+  	        <form method="get"><label for="google_sheet_key"><i class="fas fa-table"></i> Google sheet key</label><input id="google_sheet_key" name="google_sheet_key" value="1f2EtbRxmCDpQnLRdQBNUF3Si-sTXjm7om1LNTmKUEZw" /> <input type="submit" value="Load" /></form>
+	        <a class="control_button"  onclick="reload_route(map);"><i class="fas fa-sync"></i> Reload route</a>
+	        <a class="control_button"  onclick="reload_pois(map);"><i class="fas fa-sync"></i> Reload POIs</a>
+	    </div>
+	    <div id="sheet_iframe">
+	        <!--
+		<iframe id="sheet" src="https://docs.google.com/spreadsheets/d/1f2EtbRxmCDpQnLRdQBNUF3Si-sTXjm7om1LNTmKUEZw/edit#gid=0"></iframe>
+		-->
+		</div>
+		<div id="map"></div>
+		<script>
+		
+var google_sheet_key = $('#google_sheet_key').val();
+$('#sheet_iframe').html('<iframe id="sheet" src="https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/edit#gid=0"></iframe>'); 
+
+function get_settings() {
+    var settings = {};
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            //console.log(this.responseText);
+            var result = this.responseText;
+    
+            // OMG this is horrible way to parse the CSV.. :D
+            // Remove "
+            result = result.replace(/"/g, '');
+            // Remove \n
+            result = result.replace(/\n/g, ',');
+            result = result.split(/,/);
+    
+            // Result is now one long array where label, lat and long are in succesive triples e.g. lable, lat, lon, lable, lat, lon etc
+            for (var i = 0; i < result.length; i+=2) {
+                var setting_name = result[i];
+                var setting_value = result[i+1];
+                settings[setting_name] = setting_value;
+                //console.log(setting_name + ' ' + setting_value);
+            }
+        }
+    };
+
+    var settings_url = 'https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/gviz/tq?tqx=out:csv&sheet=Settings&range=A1:B123';
+    xmlhttp.open("GET", settings_url, false);
+    xmlhttp.send(); 
+    return settings;
+}
+var settings = get_settings();
+var layer_list = {}
+
+
+function create_layer(id, map) {
+    // Delete layer if already exists
+    if (id in layer_list) {
+        layer_list[id].clearLayers();
+        delete layer_list[id];
+    }
+    
+    // Create layer
+    var new_layer = L.layerGroup();
+    new_layer.addTo(map)
+    layer_list[id] = new_layer;
+    
+    return new_layer;
+}
+
+function reload_pois(){
+    add_pois(map);
+}
+
+function reload_route(){
+    add_route(map);
+}
+
+// Add pois from spreadsheet
+function add_pois() {
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            var result = this.responseText;
+    
+            // OMG this is horrible way to parse the CSV.. :D
+            // Remove "
+            result = result.replace(/"/g, '');
+            // Remove \n
+            result = result.replace(/\n/g, ',');
+            result = result.split(/,/);
+    
+            var pois_layer = create_layer('pois', map);
+    
+            // Result is now one long array where label, lat, long and icon are in succesive quadruples e.g. lable, lat, lon, icon, lable, lat, lon, icon etc
+            for (var i = 0; i < result.length; i+=4) {
+                var label = result[i];
+                var lat = result[i+1];
+                var lon = result[i+2];
+                var icon = result[i+3];
+        
+                if(icon == '') {
+                    icon = 'circle';
+                }
+        
+                // Add marker to map
+                if (label != '' && lat != '' && lon != '') {
+                    
+                    var awesome_marker_options = L.AwesomeMarkers.icon({
+                        prefix: 'fa',
+                        icon: icon,
+                        markerColor: 'blue'
+                    });
+      
+                    //L.marker([51.941196,4.512291], {icon: redMarker}).addTo(map);
+
+                    var marker = L.marker([lat, lon], {icon: awesome_marker_options}).addTo(pois_layer);
+                    var popup = marker.bindPopup('<h1>' + label + '</h1>');
+                    
+                    //var marker = L.marker([lat, lon]).addTo(pois_layer);
+                    //var popup = marker.bindPopup('<h1>' + label + '</h1>');
+                }
+            }
+        }
+    };
+
+    var csv_url = 'https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/gviz/tq?tqx=out:csv&sheet=Plan&range=D2:G123';
+    xmlhttp.open("GET", csv_url, true);
+    xmlhttp.send(); 
+}
+
+
+
+// Add route from spreadsheet
+function add_route() {
+    var xmlhttp = new XMLHttpRequest();
+    var points = [];
+    xmlhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            var result = this.responseText;
+            var last_point = false;
+    
+            // OMG this is horrible way to parse the CSV.. :D
+            // Remove "
+            result = result.replace(/"/g, '');
+            // Remove \n
+            result = result.replace(/\n/g, ',');
+            result = result.split(/,/);
+    
+            // Result is now one long array where lat and long are in succesive doublets e.g. lat, lon, lat, lon etc
+            for (var i = 0; i < result.length; i+=2) {
+                var lat = result[i+1];
+                var lon = result[i];
+        
+                // Add point to list
+                if (lat != '' && lon != '') {
+                    var point = new L.LatLng(lat, lon);
+                    points.push(point);
+                    
+                    if (!first_point){
+                        var first_point = point;
+                    }
+                    
+                    last_point = point;
+                }
+            }
+
+            var route_layer = create_layer('route', map);
+
+            var route = new L.polyline(points, {
+                color: 'red',
+                weight: 3,
+                opacity: 0.8,
+                smoothFactor: 1
+            });
+            route.addTo(route_layer);
+            
+            var awesome_marker_options_start = L.AwesomeMarkers.icon({
+                prefix: 'fa',
+                icon: 'circle',
+                markerColor: 'green'
+            });
+
+            var awesome_marker_options_end = L.AwesomeMarkers.icon({
+                prefix: 'fa',
+                icon: 'circle',
+                markerColor: 'red'
+            });
+
+
+            var marker_start = L.marker(first_point, {icon: awesome_marker_options_start}).addTo(route_layer);
+            var popup_start = marker_start.bindPopup('<h1>Start</h1>');
+            
+            var marker_end = L.marker(last_point, {icon: awesome_marker_options_end}).addTo(route_layer);
+            var popup_end = marker_end.bindPopup('<h1>End</h1>');
+            
+        } 
+    };
+
+    var url = 'https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/gviz/tq?tqx=out:csv&sheet=Route&range=A2:B9999';
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send(); 
+}
+
+
+
+var OpenTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 15,
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+});
+
+var esriAerialUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services'+
+'/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+var esriAerialAttrib = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, '+
+'USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the'+
+' GIS User Community';
+var esriAerial = new L.TileLayer(esriAerialUrl,
+    {maxZoom: 15, attribution: esriAerialAttrib});
+
+var map = new L.Map('map', {
+    center: [settings["map_initial_latitude"], settings["map_initial_longitude"]],
+    zoom: settings["map_initial_zoom"],
+    zoomControl: true,
+    layers: [OpenTopoMap],
+    enableHighAccurac: true,
+    watch: true
+});
+
+var baseMaps = {
+    "Topo": OpenTopoMap,
+    "Aerial": esriAerial
+};
+
+L.control.layers(baseMaps, false).addTo(map);
+
+map.addControl(new L.Control.Fullscreen());
+
+L.control.measure({
+    position: 'topleft',
+    lineColor: 'red'
+}).addTo(map)
+
+
+// Coordinate viewer
+//https://github.com/xguaita/Leaflet.MapCenterCoord
+L.control.mapCenterCoord().addTo(map);
+
+add_pois(map);
+add_route(map);
+
+
+// Set height for map and sheets to 100% - controls height
+function set_elements_height(){
+    var controls_height = $('#controls').css('height');
+    controls_height = controls_height.replace('px', ''); // Remove px from height
+    var window_height = window.innerHeight;
+    var new_height = window_height - controls_height;
+
+    $('#map').css('height', new_height + 'px');
+    $('#sheet').css('height', new_height + 'px');
+}
+
+
+$(window).resize(function() {
+	set_elements_height();
+});
+set_elements_height();
+
+		</script>
+	</body>
+</html>
