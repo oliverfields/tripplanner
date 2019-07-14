@@ -68,11 +68,7 @@ margin-left: 60%;
 	        <a class="control_button"  onclick="reload_route(map);"><i class="fas fa-sync"></i> Reload route</a>
 	        <a class="control_button"  onclick="reload_pois(map);"><i class="fas fa-sync"></i> Reload POIs</a>
 	    </div>
-	    <div id="sheet_iframe">
-	        <!--
-		<iframe id="sheet" src="https://docs.google.com/spreadsheets/d/1f2EtbRxmCDpQnLRdQBNUF3Si-sTXjm7om1LNTmKUEZw/edit#gid=0"></iframe>
-		-->
-		</div>
+	    <div id="sheet_iframe"></div>
 		<div id="map"></div>
 		<script>
 		
@@ -185,7 +181,7 @@ function add_pois() {
     };
 
     var csv_url = 'https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/gviz/tq?tqx=out:csv&sheet=Plan&range=D2:G123';
-    xmlhttp.open("GET", csv_url, true);
+    xmlhttp.open("GET", csv_url, false);
     xmlhttp.send(); 
 }
 
@@ -258,7 +254,7 @@ function add_route() {
     };
 
     var url = 'https://docs.google.com/spreadsheets/d/' + google_sheet_key + '/gviz/tq?tqx=out:csv&sheet=Route&range=A2:B9999';
-    xmlhttp.open("GET", url, true);
+    xmlhttp.open("GET", url, false);
     xmlhttp.send(); 
 }
 
